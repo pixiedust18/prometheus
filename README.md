@@ -77,13 +77,17 @@ During inference, we parse the score by splitting the number that is generated n
 ### Inference with an Evaluator LM
 1) To run scoring for a dataset with one single instruction, run the following command - 
 
+  ```
   python evaluation/fin_single_run.py --model_name "kaist-ai/Prometheus-7b-v1.0" --dataset_path "evaluation/benchmark/data/feedback_collection_test.json" --output_file_name ""
+  ```
   
   The applicable datasets are - feedback_collection_test.json, vicuna_eval.json
 
 2) To run scoring for a dataset with 2 instructions, run the following command - 
 
+  ```
   python evaluation/fin_eval_run.py --model_name "kaist-ai/Prometheus-7b-v1.0" --dataset_path "evaluation/benchmark/data/hhh_alignment_eval.json" --output_file_name ""
+```
 
   The applicable datasets are - hhh_alignment_eval.json
 
