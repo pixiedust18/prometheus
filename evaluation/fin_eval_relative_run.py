@@ -6,6 +6,7 @@ from accelerate import init_empty_weights
 import argparse
 import pandas as pd
 from tqdm import tqdm
+import re
 
 
 def load_model(model_name="kaist-ai/Prometheus-7b-v1.0"):
@@ -28,7 +29,14 @@ def get_inference(model, data):
 def get_res(outputs):
   f_o = outputs.rfind("###Feedback")
   s_o = outputs.rfind("[RESULT]")
-  return outputs[f_o:s_o], int(outputs[s_o+9:s_o+10])
+  try:
+    score = int(outputs[s_o+9:s_o+10])
+  except:
+    matches = re.findall(r'\b\d\b', outputs[-10:])
+    score = int(matches[-1])
+
+  return outputs[f_o:s_o], score
+
 
 def make_inferences(model, tokenizer, data, output_path = 'output.csv'):
   res_df = pd.DataFrame()
@@ -75,13 +83,12 @@ def make_inferences(model, tokenizer, data, output_path = 'output.csv'):
     except Exception as e:
       print(f"An exception occurred: {e}")
       continue
-    break
+    #break
   res_df = pd.DataFrame(res_list)
   res_df.to_csv(output_path)
   tot_acc = fin_accuracy/n_inferences
-  return tot_accuracy
+  return tot_acc
 
-  
 if __name__ == "__main__":
     # Set up argument parsing
     parser = argparse.ArgumentParser(description="Process model, dataset, and output file names.")
@@ -102,6 +109,4 @@ if __name__ == "__main__":
     data = load_dataset(dataset_path)
     acc = make_inferences(model, tokenizer, data, output_path = 'output.csv')
     print('******* Final Accuracy = ', acc)
-
-
 
