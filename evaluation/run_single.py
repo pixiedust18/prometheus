@@ -17,9 +17,7 @@ def load_model(model_name="kaist-ai/Prometheus-7b-v1.0"):
   return tokenizer, model
 
 def load_dataset(test_file = "benchmark/data/hhh_alignment_eval.json"):
-    test_file = '/content/prometheus/evaluation/benchmark/data/feedback_collection_test.json'
-    import json
-
+    #test_file = '/content/prometheus/evaluation/benchmark/data/feedback_collection_test.json'
     try:
         with open(test_file, 'r') as file:
             data = json.load(file)
