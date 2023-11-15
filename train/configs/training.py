@@ -14,6 +14,7 @@ class train_config:
     low_cpu_fsdp: bool=False
     batch_size_training: int=16
     gradient_accumulation_steps: int=1
+    gradient_clipping: float = 0.8
     num_epochs: int=3
     num_workers_dataloader: int=1
     lr: float=1e-5
@@ -37,7 +38,6 @@ class train_config:
     scheduler: str="cosine" # lr scheduler type ["cosine", "step"]
     save_optimizer: bool=False # will be used if using FSDP
     use_fast_kernels: bool = False, # Enable using SDPA from PyTroch Accelerated Transformers, make use Flash Attention and Xformer memory-efficient kernels
-
     
     
     

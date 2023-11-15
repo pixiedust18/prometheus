@@ -54,6 +54,7 @@ import wandb
 def main(**kwargs):
     # Update the configuration for the training and sharding process
     update_config((train_config, fsdp_config), **kwargs)
+    config_dict = {field.name: getattr(train_config, field.name) for field in fields(train_config)}
 
     # Set the seeds for reproducibility
     torch.cuda.manual_seed(train_config.seed)
@@ -78,9 +79,10 @@ def main(**kwargs):
             else:
                 experiment_name = train_config.experiment_name
             run_wandb = wandb.init(
-                    entity="jshin49",
-                    project="llama-ft",
-                    name=experiment_name
+                    entity="qianoum",
+                    project="anlp-hw3",
+                    name=experiment_name,
+                    config=config_dict
                 )
         else:
             run_wandb=None
@@ -90,9 +92,10 @@ def main(**kwargs):
         else:
             experiment_name = train_config.experiment_name
         run_wandb = wandb.init(
-                    entity="jshin49",
-                    project="llama-ft",
-                    name=experiment_name
+                    entity="qianoum",
+                    project="anlp-hw3",
+                    name=experiment_name,
+                    config=config_dict
                 )
     if torch.distributed.is_initialized():
         torch.cuda.set_device(local_rank)

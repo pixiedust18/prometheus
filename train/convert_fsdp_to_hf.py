@@ -26,6 +26,7 @@ def main(
     fsdp_checkpoint_path="", # Path to FSDP Sharded model checkpoints
     consolidated_model_path="", # Path to save the HF converted model checkpoints
     HF_model_path_or_name="", # Path/ name of the HF model that include config.json and tokenizer_config.json (e.g. meta-llama/Llama-2-7b-chat-hf)
+    repo_id="", # Repo ID of the model
 ):
     
     try:
@@ -61,7 +62,9 @@ def main(
     #save the FSDP sharded checkpoints in HF format
     model.save_pretrained(consolidated_model_path)
     print(f"HuggingFace model checkpoints has been saved in {consolidated_model_path}")
-
+    if len(repo_id) > 0:
+        model.push_to_hub(repo_id=repo_id) # use_auth_token="" a write access token
+        print("HF model has been uploaded to", repo_id)
 
 if __name__ == "__main__":
     fire.Fire(main)

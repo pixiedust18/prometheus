@@ -5,6 +5,7 @@ import os
 import sys
 from typing import List
 import yaml
+from contextlib import nullcontext
 import time
 
 import fire
@@ -46,7 +47,7 @@ def set_tokenizer_params(tokenizer: LlamaTokenizer):
 def byte2mb(x):
     return int(x / 2**20)
 
-def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_scheduler, gradient_accumulation_steps, train_config, fsdp_config=None, local_rank=None, rank=None, wandb_logger=None):
+def train(model, train_dataloader, eval_dataloader, tokenizer, optimizer, lr_scheduler, gradient_accumulation_steps, train_config, fsdp_config=None, local_rank=None, rank=None, wandb_logger=None):
     """
     Trains the model on the given dataloader
     
@@ -71,6 +72,8 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
         scaler = torch.cuda.amp.GradScaler() 
     if train_config.enable_fsdp:
         world_size = int(os.environ["WORLD_SIZE"]) 
+    autocast = torch.cuda.amp.autocast if train_config.use_fp16 else nullcontext
+
     train_prep = []
     train_loss = []
     val_prep = []
@@ -89,8 +92,12 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                     if train_config.enable_fsdp:
                         batch[key] = batch[key].to(local_rank)
                     else:
-                        batch[key] = batch[key].to('cuda:0')              
-                loss = model(**batch).loss
+                        batch[key] = batch[key].to('cuda:0')
+                
+                # fix gradient clipping bug https://github.com/facebookresearch/llama-recipes/pull/280
+                with autocast(): 
+                    loss = model(**batch).loss
+                # loss = model(**batch).loss
                 loss = loss / gradient_accumulation_steps
                 total_loss += loss.detach().float()
                 
@@ -98,15 +105,24 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                     # if fp16 is enabled, use gradient scaler to handle gradient update
                     scaler.scale(loss).backward()
                     if (step + 1) % gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
+                        if train_config.gradient_clipping > 0.0:
+                            scaler.unscale_(optimizer)
+                            if train_config.enable_fsdp:
+                                model.clip_grad_norm_(train_config.gradient_clipping)
+                            else:
+                                torch.nn.utils.clip_grad_norm_(model.parameters(), train_config.gradient_clipping)
                         scaler.step(optimizer)
                         scaler.update()
                         optimizer.zero_grad()
                 else:
                     # regular backpropagation when fp16 is not used
                     loss.backward()
-                    # TODO: Add argument for gradient clipping
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), 0.8)
                     if (step + 1) % gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
+                        if train_config.gradient_clipping > 0.0:
+                            if train_config.enable_fsdp:
+                                model.clip_grad_norm_(train_config.gradient_clipping)
+                            else:
+                                torch.nn.utils.clip_grad_norm_(model.parameters(), train_config.gradient_clipping)
                         optimizer.step()
                         optimizer.zero_grad()
                         if train_config.scheduler == "cosine":
@@ -116,7 +132,9 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                     #     print(f"\n step {step} is completed and loss is {loss.detach().float()}")
                     if wandb_logger!=None:
                         wandb_logger.log({"epoch":epoch,"step":step,"train_loss": loss.detach().float(),"learning_rate":optimizer.param_groups[-1]['lr']})
-                # else:
+                else:
+                    if wandb_logger!=None:
+                        wandb_logger.log({"epoch":epoch,"step":step,"train_loss": loss.detach().float(),"learning_rate":optimizer.param_groups[-1]['lr']})
                 #     print(f"\n step {step} is completed and loss is {loss.detach().float()}")
         epoch_end_time = time.perf_counter()-epoch_start_time
         epoch_times.append(epoch_end_time)    
@@ -154,7 +172,7 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
         #     eval_ppl, eval_epoch_loss = evaluation(model, train_config, eval_dataloader, local_rank, tokenizer)
         
         if wandb_logger:
-            wandb_logger.log({"epoch":epoch,"learning_rate":lr_scheduler.get_lr()})
+            wandb_logger.log({"epoch":epoch,"learning_rate":optimizer.param_groups[-1]['lr']})
             # wandb_logger.log({"epoch":epoch,"eval_loss": total_loss,"learning_rate":lr_scheduler.get_lr()})
         checkpoint_start_time = time.perf_counter()
         # if train_config.save_model and eval_epoch_loss < best_val_loss:
@@ -167,8 +185,8 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                         print(f"we are about to save the PEFT modules")
                 else:
                     print(f"we are about to save the PEFT modules")
-                model.save_pretrained(train_config.output_dir)  
-                if train_config.enable_fsdp:
+                model.save_pretrained(train_config.output_dir) # push_to_hub=True?
+                if train_config.enable_fsdp: # if use both FSDP + PEFT, use nightly version of transformers
                     if rank==0: 
                         print(f"PEFT modules are saved in {train_config.output_dir} directory")
                 else:
