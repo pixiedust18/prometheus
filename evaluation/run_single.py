@@ -52,7 +52,7 @@ def make_inferences(model, tokenizer, data, output_path = 'output_single.csv'):
   fin_accuracy = 0
   n_inferences = 0
   res_list = []
-  for i in range(len(data)):
+  for i in tqdm(range(len(data))):
     try:
       pos = data[i]['instruction']
       #neg = data[i]['rejected_instruction']
@@ -61,7 +61,7 @@ def make_inferences(model, tokenizer, data, output_path = 'output_single.csv'):
       input_ids = tokenizer(pos, return_tensors="pt").input_ids.to("cuda")
       outputs = model.generate(input_ids, temperature=1.0, top_p=0.9, max_new_tokens=256, repetition_penalty=1.03)
       pos_op = tokenizer.decode(outputs[0])
-      print(pos_op)
+      #print(pos_op)
 
       torch.cuda.empty_cache()
       gc.collect()
