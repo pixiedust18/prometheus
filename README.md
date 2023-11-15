@@ -1,6 +1,6 @@
 <h1 align="center">Prometheus</h1>
 
-This is the official github repository for [Prometheus: Inducing Fine-grained Evaluation Capability in Language Models](https://arxiv.org/abs/2310.08491).
+This code is derived from the official github repository for [Prometheus: Inducing Fine-grained Evaluation Capability in Language Models](https://arxiv.org/abs/2310.08491).
 
 
 Prometheus is an evaluator LM that is open-source, offers reproducible evaluation, and inexpensive to use. Specifically designed for fine-grained evaluation on a customized score rubric, Prometheus is a good alternative for human evaluation and GPT-4 evaluation.
@@ -23,6 +23,11 @@ Install dependencies
 pip install -r requirements.txt
 ```
 
+Log into Hugging Face. To run inferences, and our models, please ensure you have access to Llama2 weights on HuggingFace. If not, follow the instructions present here: https://ai.meta.com/resources/models-and-libraries/llama-downloads/
+```
+huggingface-cli login
+```
+   
 ### Input and Output Format of Prometheus
 
 Prometheus is trained and inferenced using the following input prompt format. Note that you could fill in the instruction, response, reference answer, and score rubrics with your own data.
@@ -62,62 +67,23 @@ Also, we use the following output format.
 [RESULT] {orig_score}
 ```
 
-During inference, you could parse the score by splitting the number that is generated next to the \[RESULT\] phrase.
+During inference, we parse the score by splitting the number that is generated next to the \[RESULT\] phrase.
 
-We also have the Feedback Collection dataset used to train Prometheus at this [link](https://huggingface.co/datasets/kaist-ai/Feedback-Collection).
 
 ### Training an Evaluator LM
 
-To train a evaluator LM, you can use our code built upon the [llama-recipes](https://github.com/facebookresearch/llama-recipes) in the train directory.
-
-```bash
-torchrun 
-    --nnodes NUM_SERVERS \
-    --nproc_per_node NUM_GPUS \
-    llama_finetuning.py \
-    --model_name MODEL_NAME \
-    --batch_size_training BATCH_SIZE
-    --dist_checkpoint_root_folder ROOT_PATH_TO_SAVE_CKPTS \
-    --dist_checkpoint_folder SUB_PATH_TO_SAVE_CKPTS \ 
-    --dataset feedback_collection_freeform_dataset \
-    --data_file DATA_FILE \
-    --hf_cache_dir HF_CACHE_DIR \
-    --num_epochs NUM_EPOCHS \
-    --scheduler LR_SCHEDULER \
-    --use_fast_kernel \
-    --enable_fsdp \
-    --pure_bf16 \
-    --low_cpu_fsdp
-```
-
-As an alternative, you could consider implementing your custom code based on huggingface.
 
 
 ### Inference with an Evaluator LM
+1) To run scoring for a dataset with one single instruction, run the following command - 
 
-To quickly try Prometheus, use the basic template code in the inference directory.
-Note that you should change the componenets (instruction, response, score rubric, reference answer) in the run.py file before running the code.
+  python evaluation/fin_single_run.py --model_name "kaist-ai/Prometheus-7b-v1.0" --dataset_path "evaluation/benchmark/data/feedback_collection_test.json" --output_file_name ""
+  
+  The applicable datasets are - feedback_collection_test.json, vicuna_eval.json
 
-After filling in the input prompt template, you should apply the conversation template of Llama-2-Chat (not applying it might lead to unexpected behaviors).
-You can find the conversation class at this [link](https://github.com/lm-sys/FastChat/blob/main/fastchat/conversation.py).
-```
-conv = get_conv_template("llama-2")
-conv.set_system_message("You are a fair evaluator language model.")
-conv.append_message(conv.roles[0], dialogs['instruction'])
-conv.append_message(conv.roles[1], None)
-prompt = conv.get_prompt()
+2) To run scoring for a dataset with 2 instructions, run the following command - 
 
-x = tokenizer(prompt,truncation=False)
-```
+  python evaluation/fin_eval_run.py --model_name "kaist-ai/Prometheus-7b-v1.0" --dataset_path "evaluation/benchmark/data/hhh_alignment_eval.json" --output_file_name ""
 
-During our experiments, we used huggingface's [TGI](https://github.com/huggingface/text-generation-inference) for fast inference purposes. You need to acquire a server url and fill in the argument from the command below.
+  The applicable datasets are - hhh_alignment_eval.json
 
-```
-cd ./evaluation/benchmark
-python3 run_absolute_scoring.py --input_file_name "./data/vicuna_eval.json" --output_file_name "./vicuna_eval_results.json" --server "http://1.1.1.1:3000/generate"
-```
-
-```
-cd ./evaluation/benchmark
-python3 run_relative_scoring.py --input_file_name "./data/mt_bench_human_judgement_eval.json" --output_file_name "./vicuna_eval_results.json" --server "http://1.1.1.1:3000/generate"
-```
