@@ -1,5 +1,5 @@
 import torch
-from transformers import AutoTokenizer, LlamaForCausalLM
+from transformers import AutoTokenizer, LlamaForCausalLM, AutoModelForCausalLM
 import json
 import gc
 from accelerate import init_empty_weights
@@ -8,12 +8,27 @@ import pandas as pd
 from tqdm import tqdm
 import re
 
+# different ways to load peft models
+# https://huggingface.co/docs/transformers/main/peft
+# (1)
+  # base_model = "meta-llama/Llama-2-7b-chat-hf" #"kaist-ai/Prometheus-7b-v1.0"
+  # model = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=torch.bfloat16, device_map={"": 0}, cache_dir="/home/ubuntu/hw3/kaistAI/prometheus/train/hf_cache_dir")
+  # model.load_adapter(model_name, device_map={"": 0})
+# (2)
+  # m = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=torch.bfloat16, device_map={"": 0}, cache_dir="/home/ubuntu/hw3/kaistAI/prometheus/train/hf_cache_dir")
+  # m = PeftModel.from_pretrained(m, adapters_name)
+  # m = m.merge_and_unload()
 
-
-def load_model(model_name="kaist-ai/Prometheus-7b-v1.0"):
+def load_model(model_name="kaist-ai/Prometheus-7b-v1.0", peft=False):
   tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-chat-hf")
-  with init_empty_weights():
-    model = LlamaForCausalLM.from_pretrained(model_name, device_map="auto", offload_folder="offload", load_in_8bit=True)
+  # for peft models:
+  if peft:
+    print("loading peft adapter", model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto", load_in_8bit=True)
+
+  else: # for non-peft models: 
+    with init_empty_weights():
+      model = LlamaForCausalLM.from_pretrained(model_name, device_map="auto", offload_folder="offload", load_in_8bit=True)
   return tokenizer, model
 
 def load_dataset(test_file = "benchmark/data/hhh_alignment_eval.json"):
@@ -61,7 +76,7 @@ def make_inferences(model, tokenizer, data, output_path = 'output_single.csv'):
       input_ids = tokenizer(pos, return_tensors="pt").input_ids.to("cuda")
       outputs = model.generate(input_ids, temperature=1.0, top_p=0.9, max_new_tokens=256, repetition_penalty=1.03)
       pos_op = tokenizer.decode(outputs[0])
-      #print(pos_op)
+      # print(pos_op)
 
       torch.cuda.empty_cache()
       gc.collect()
@@ -85,6 +100,7 @@ def make_inferences(model, tokenizer, data, output_path = 'output_single.csv'):
       n_inferences+=1
     except Exception as e:
       print(f"An exception occurred: {e}")
+      print(pos_op)
       continue
 
   res_df = pd.DataFrame(data)
@@ -104,15 +120,18 @@ if __name__ == "__main__":
 
     # Parse the command line arguments
     args = parser.parse_args()
-    print(args)
+    # print(args)
     model_name = args.model_name
     dataset_path = args.dataset_path
+    output_file_name = args.output_file_name
 
     # Load model
-    tokenizer, model = load_model(model_name)
+    peft = "peft" in model_name
+    tokenizer, model = load_model(model_name, peft)
     data = load_dataset(dataset_path)
-    acc = make_inferences(model, tokenizer, data, output_path = 'output.csv')
+    acc = make_inferences(model, tokenizer, data, output_path = output_file_name+'_output.csv')
     print('******* Final Accuracy = ', acc)
 
-
-
+# usage for peft models:
+# python run_single.py --model_name "anlp-csk/peft-prometheus7b-8x4" --dataset_path "benchmark/data/feedback_collection_test.json" --output_file_name "peft-prometheus7b-8x4"
+# python run_single.py --model_name "anlp-csk/peft-llama7b-8x4" --dataset_path "benchmark/data/feedback_collection_test.json" --output_file_name "peft-llama7b-8x4"
